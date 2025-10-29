@@ -1,0 +1,5 @@
+{
+  "app_name": "Add_Sheet_Interface_v2",
+  "log_level": "INFO",
+  "default_data_dir": "./data"
+}
