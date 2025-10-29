@@ -10,6 +10,37 @@ ENV_PATH = Path(__file__).parent / "config" / ".env"
 if ENV_PATH.exists():
     load_dotenv(str(ENV_PATH))
 
+def is_omv_file(filename: str) -> Tuple[bool, str]:
+    """
+    Validate if the file is of type OMV based on the antepenultimate position.
+    
+    Args:
+        filename: File name to validate
+        
+    Returns:
+        Tuple[bool, str]: (is_omv, omv_type)
+    """
+    try:
+        # Split filename by underscore
+        parts = filename.split("_")
+        
+        if len(parts) < 3:
+            return False, "ERROR: Filename does not have enough parts to determine OMV type"
+        
+        # Get the antepenultimate position (third from the end)
+        antepenultimate = parts[-3]
+        
+        # OMV types
+        omv_types = ['210', '212', '216', '236', '242', '250', '253']
+        
+        if antepenultimate in omv_types:
+            return True, f"OMV_{antepenultimate}"
+        else:
+            return False, "NOT_OMV"
+            
+    except Exception as e:
+        return False, f"ERROR: {e}"
+
 def get_args_info(filename: str) -> Tuple[bool, str, List[str]]:
     """
     Extract parameters from filename for SQL execution.
@@ -21,6 +52,10 @@ def get_args_info(filename: str) -> Tuple[bool, str, List[str]]:
     Returns:
         Tuple[bool, str, List[str]]: (success, error_message, [arg1, arg2, arg3, arg4, arg5])
     """
+    # First, validate if it's an OMV file
+    is_omv, omv_type = is_omv_file(filename)
+    print(f"File type validation: {omv_type}")
+    
     # First, check if any rating component from rating_component_list.csv is found in filename
     rating_component_file = Path(__file__).parent / "SQL_files" / "rating_component_list.csv"
     
@@ -56,13 +91,26 @@ def get_args_info(filename: str) -> Tuple[bool, str, List[str]]:
     if len(parts) < 5:
         return False, f"ERROR: Filename must have at least 5 parts separated by '_'. Got {len(parts)} parts: {parts}", []
     
-    # Extract the 5 required parameters
-    extra_args = len(parts) - 8 - rat_comp_underscore #check if the filename has more than 8 parts
-    arg1 = parts[0]  # fk_orga_fran (franchise)
-    arg2 = parts[1]  # fk_orga_oper (operator)
-    arg3 = parts[2+extra_args]  # name (period) - will be the third part
-    arg4 = found_component if found_component else parts[3+extra_args]  # rating_component - use found component or parts[3]+extra_args
-    arg5 = parts[5+extra_args+rat_comp_underscore] if found_component else parts[5+extra_args]  # component_direction - will be the fifth part
+    # Adjust parameter extraction based on OMV type
+    if is_omv:
+        # For OMV files, the structure is different due to the OMV type in antepenultimate position
+        # Example: 215_123_123_ENTEL_CHILE_S.A._202509_CLDI_R_I_236_20251008_120252.xls
+        extra_args = len(parts) - 9 - rat_comp_underscore  # OMV files have one extra part
+        arg1 = parts[0]  # fk_orga_fran (franchise)
+        arg2 = parts[1]  # fk_orga_oper (operator)
+        arg3 = parts[2+extra_args]  # name (period) - will be the third part
+        arg4 = found_component if found_component else parts[3+extra_args]  # rating_component
+        arg5 = parts[5+extra_args+rat_comp_underscore] if found_component else parts[5+extra_args]  # component_direction
+        print(f"OMV file detected - using adjusted parameter extraction")
+    else:
+        # For non-OMV files, use the original logic
+        extra_args = len(parts) - 8 - rat_comp_underscore  # check if the filename has more than 8 parts
+        arg1 = parts[0]  # fk_orga_fran (franchise)
+        arg2 = parts[1]  # fk_orga_oper (operator)
+        arg3 = parts[2+extra_args]  # name (period) - will be the third part
+        arg4 = found_component if found_component else parts[3+extra_args]  # rating_component - use found component or parts[3]+extra_args
+        arg5 = parts[5+extra_args+rat_comp_underscore] if found_component else parts[5+extra_args]  # component_direction - will be the fifth part
+        print(f"Non-OMV file detected - using standard parameter extraction")
     
     print(f"Extracted parameters from filename '{filename}':")
     print(f"  arg1 (franchise): {arg1}")
@@ -71,6 +119,7 @@ def get_args_info(filename: str) -> Tuple[bool, str, List[str]]:
     print(f"  arg4 (rating_component): {arg4}")
     print(f"  arg5 (component_direction): {arg5}")
     print(f"  rat_comp_underscore: {rat_comp_underscore}")
+    print(f"  File type: {omv_type}")
     
     return True, "", [arg1, arg2, arg3, arg4, arg5]
 
